@@ -10,46 +10,123 @@
 #include <linux/sched.h>
 #include <linux/kthread.h>
 #include <linux/delay.h>
+#include <linux/proc_fs.h>
 
-static struct task_struct *thread_st;
-static DECLARE_WAIT_QUEUE_HEAD(wq);
-static int flag = 0;
+#define FIRST_MINOR 0
+#define MINOR_CNT 1
 
-static int thread_fn(void *unused)
+struct proc_dir_entry *my_proc_file;
+char flag = 'n';
+static dev_t dev;
+static struct cdev c_dev;
+static struct class *cl;
+static struct task_struct *sleeping_task;
+
+// TODO 1: Statically declare the wait queue head
+
+int open(struct inode *inode, struct file *filp)
 {
-	printk("Going to Sleep\n");
-	wait_event_interruptible(wq, flag != 0);
-	flag = 0;
-	printk("Woken Up\n");
-	thread_st = NULL;
-    do_exit(0);
-}
-
-
-static int __init init_thread(void)
-{
-	printk(KERN_INFO "Creating Thread 1\n");
-	thread_st = kthread_run(thread_fn, NULL, "mythread");
-	ssleep(10);
-	printk("Waking Up Thread\n");
-	flag = 1;
-	wake_up_interruptible(&wq);
+	printk(KERN_INFO "Inside open \n");
+	sleeping_task = current;
 	return 0;
 }
 
-static void __exit cleanup_thread(void)
+int release(struct inode *inode, struct file *filp) 
 {
-	printk("Cleaning Up\n");
-	if (thread_st != NULL)
-	{
-		kthread_stop(thread_st);
-		printk(KERN_INFO "Thread stopped");
-	}
+	printk (KERN_INFO "Inside close \n");
+	return 0;
 }
 
-module_init(init_thread);
-module_exit(cleanup_thread);
+ssize_t read(struct file *filp, char *buff, size_t count, loff_t *offp) 
+{
+	printk("Inside read \n");
+	printk("Scheduling Out\n");
+	// TODO 2: Wait for the flag to be 'y'
+	flag = 'n';
+	printk(KERN_INFO "Woken Up\n");
+	return 0;
+}
+
+ssize_t write(struct file *filp, const char *buff, size_t count, loff_t *offp) 
+{ 
+	printk(KERN_INFO "Inside write \n");
+	return 0;
+}
+
+int write_proc(struct file *file,const char *buffer, size_t count, loff_t *off)
+{
+	int ret = 0;
+	printk(KERN_INFO "procfile_write /proc/wait called");
+	ret = __get_user(flag,buffer);
+	printk(KERN_INFO "%c",flag);
+	// TODO 3: Wake up the process waiting on wait queue
+	return count;
+}
+
+struct file_operations p_fops = {
+	.write = write_proc
+};
+
+struct file_operations pra_fops = {
+	read:        read,
+	write:        write,
+	open:         open,
+	release:    release
+};
+
+static int create_new_proc_entry(void)
+{
+	proc_create("wait",0,NULL,&p_fops);
+	return 0;
+}
+
+int schd_init (void) 
+{
+	if (alloc_chrdev_region(&dev, FIRST_MINOR, MINOR_CNT, "SCD") < 0)
+	{
+		return -1;
+	}
+	printk("Major Nr: %d\n", MAJOR(dev));
+
+	cdev_init(&c_dev, &pra_fops);
+
+	if (cdev_add(&c_dev, dev, MINOR_CNT) == -1)
+	{
+		unregister_chrdev_region(dev, MINOR_CNT);
+		return -1; 
+	}
+
+	if ((cl = class_create(THIS_MODULE, "chardrv")) == NULL)
+	{
+		cdev_del(&c_dev);
+		unregister_chrdev_region(dev, MINOR_CNT);
+		return -1;
+	}
+	if (IS_ERR(device_create(cl, NULL, dev, NULL, "mychar%d", 0)))
+	{
+		class_destroy(cl);
+		cdev_del(&c_dev);
+		unregister_chrdev_region(dev, MINOR_CNT);
+		return -1;
+	}
+
+	create_new_proc_entry();
+	return 0;
+}
+
+void schd_cleanup(void) 
+{
+	printk(KERN_INFO " Inside cleanup_module\n");
+	remove_proc_entry("wait",NULL);
+	device_destroy(cl, dev);
+	class_destroy(cl);
+	cdev_del(&c_dev);
+	unregister_chrdev_region(dev, MINOR_CNT);
+}
+
+module_init(schd_init);
+module_exit(schd_cleanup);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Embitude Trainings <info@embitude.in>");
-MODULE_DESCRIPTION("Wait Queue Demo");
+MODULE_DESCRIPTION("Waiting Process Demo");

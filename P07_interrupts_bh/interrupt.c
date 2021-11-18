@@ -25,7 +25,6 @@ static irqreturn_t button_irq_handler(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-
 static int __init my_init(void)
 {
 	int irq_req_res;
