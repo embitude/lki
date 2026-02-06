@@ -12,7 +12,11 @@
 #include <linux/device.h>
 #include <linux/cdev.h>
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6,11,0))
 #define GPIO_NUMBER 56
+#else
+#define GPIO_NUMBER 536
+#endif
 
 static dev_t first;			// Global variable for the first device number
 static struct cdev c_dev;	// Global variable for the character device structure
@@ -68,6 +72,11 @@ static int init_gpio(void)
 	int ret;
 	struct device *dev_ret;
 
+    if ((ret = gpio_request_one(GPIO_NUMBER, GPIOF_OUT_INIT_LOW, "led1")) != 0) {
+        printk("GPIO request failed %d\n", ret);
+        return -1;
+    }
+
 	if ((ret = alloc_chrdev_region(&first, 0, 1, "gpio_drv")) < 0)
 	{
 		printk(KERN_ALERT "Device registration failed\n");
@@ -75,7 +84,11 @@ static int init_gpio(void)
 	}
 	printk("Major Nr: %d\n", MAJOR(first));
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6,4,0))
 	if (IS_ERR(cl = class_create(THIS_MODULE, "gpiodrv")))
+#else
+	if (IS_ERR(cl = class_create("gpiodrv")))
+#endif
 	{
 		printk(KERN_ALERT "Class creation failed\n");
 		unregister_chrdev_region(first, 1);
@@ -110,6 +123,7 @@ void cleanup_gpio(void)
 	device_destroy(cl, first);
 	class_destroy(cl);
 	unregister_chrdev_region(first, 1);
+	gpio_free(GPIO_NUMBER);
 
 	printk(KERN_INFO "Device unregistered\n");
 }

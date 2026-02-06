@@ -1,6 +1,7 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/kernel.h>		/* printk() */
+#include <linux/version.h>		/* printk() */
 #include <linux/fs.h>
 #include <linux/cdev.h>
 #include <linux/device.h>
@@ -16,7 +17,11 @@
 
 #include <linux/gpio.h>
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6,11,0))
 static u8 gpio_sw = 72;
+#else
+static u16 gpio_sw = 552;
+#endif
 static int irq_line;
 
 static irqreturn_t button_irq_handler(int irq, void *data)
@@ -53,6 +58,7 @@ static int __init my_init(void)
 static void __exit my_cleanup(void)
 {
 	free_irq(irq_line, NULL);
+	gpio_free(gpio_sw);
 	printk(KERN_INFO "Removing Interrupt driver\n");
 }
 

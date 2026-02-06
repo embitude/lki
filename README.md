@@ -9,5 +9,5 @@ Description of the various folders:
 
 Brief about the corresponding online training(s) conducted @ Embitude (https://embitude.in)
 
-+ Linux Kernel Internals (LKI)
-	- Info Link: https://embitude.in/index.php/linuxkernelinternalupdated/
++ Project-Oriented Embedded Linux Device Drivers
+	- Info Link: https://embitude.in/embedded-linux-device-drivers/

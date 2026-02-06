@@ -1,5 +1,6 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
+#include <linux/version.h>
 #include <linux/fs.h> // required for various structures related to files liked fops.
 #include <asm/uaccess.h> // required for copy_from and copy_to user functions
 #include <linux/semaphore.h>
@@ -26,7 +27,11 @@ int open(struct inode *inode, struct file *filp)
 		printk(KERN_INFO " could not hold semaphore");
 		return -1;
 	}
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,14,0))
 	printk(KERN_INFO "State after = %ld\n", task->state); // printing the state of user process
+#else
+	printk(KERN_INFO "State after = %ld\n", task->__state); // printing the state of user process
+#endif
 	return 0;
 }
 
@@ -65,17 +70,28 @@ int remove(struct file *file,const char *buffer, size_t count, loff_t *off)
 	/* according to linux/sched.h the value of state and their meanings are
 	 * -1 unrunnable, 0 runnable, >0 stopped
 	 */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,14,0))
 	printk(KERN_INFO "State before= %ld\n", task->state);  // printing the state of user process
+#else
+	printk(KERN_INFO "State before= %ld\n", task->__state);  // printing the state of user process
+#endif
 	up(&sem);
 	printk(KERN_INFO "Inside remove\n");
 
 	return count;
 }
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,6,0))
 struct file_operations p_fops = {
 	.read = hold,
 	.write = remove,
 };
-
+#else
+struct proc_ops p_fops = {
+	.proc_read = hold,
+	.proc_write = remove,
+};
+#endif
 
 void create_new_proc_entry(void)
 {
@@ -106,7 +122,11 @@ int semdemo_init (void)
 		return -1;
 	}
 
-	if ((cl = class_create(THIS_MODULE, "chardrv")) == NULL)
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6,4,0))
+	if (IS_ERR(cl = class_create(THIS_MODULE, "chardev")))
+#else
+	if (IS_ERR(cl = class_create("chardev")))
+#endif
 	{
 		cdev_del(&c_dev);
 		unregister_chrdev_region(dev, MINOR_CNT);

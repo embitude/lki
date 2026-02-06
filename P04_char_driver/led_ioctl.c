@@ -14,7 +14,14 @@
 
 #include "led_ioctl.h"
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6,11,0))
 static long gpio_num = 56;
+static u16 led[4] = {53, 54, 55, 56};
+#else
+static long gpio_num = 536;
+static u16 led[4] = {533, 534, 535, 536};
+#endif
+static char *led_name[4] = {"led1", "led2", "led3", "led4"};
 
 static dev_t first;			// Global variable for the first device number
 static struct cdev c_dev;	// Global variable for the character device structure
@@ -35,7 +42,11 @@ static long gpio_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	switch (cmd)
 	{
 		case GPIO_SELECT_LED:
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6,11,0))
 			gpio_num = 52 + arg;
+#else
+			gpio_num = 532 + arg;
+#endif
 			break;
 
 		// TODO 1: Add the code for setting & getting the LED status
@@ -56,8 +67,17 @@ static struct file_operations file_ops =
 
 static int init_gpio(void)
 {
-	int ret;
+	int ret, i, j;
 	struct device *dev_ret;
+
+    for (i = 0; i < 4; i++) {
+        if ((ret = gpio_request_one(led[i], GPIOF_OUT_INIT_LOW, led_name[i])) != 0) {
+            printk("GPIO request %d failed %d\n", led[i], ret);
+            for (j = i-1; j >= 0; j--)
+                gpio_free(led[j]);
+            return -1;
+        }
+    }
 
 	if ((ret = alloc_chrdev_region(&first, 0, 1, "gpio_drv")) < 0)
 	{
@@ -66,7 +86,11 @@ static int init_gpio(void)
 	}
 	printk("Major Nr: %d\n", MAJOR(first));
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6,4,0))
 	if (IS_ERR(cl = class_create(THIS_MODULE, "gpiodrv")))
+#else
+	if (IS_ERR(cl = class_create("gpiodrv")))
+#endif
 	{
 		printk(KERN_ALERT "Class creation failed\n");
 		unregister_chrdev_region(first, 1);
@@ -97,10 +121,15 @@ static int init_gpio(void)
 
 void cleanup_gpio(void)
 {
+	int i;
 	cdev_del(&c_dev);
 	device_destroy(cl, first);
 	class_destroy(cl);
 	unregister_chrdev_region(first, 1);
+
+	for (i = 0; i < 4; i++) {
+        gpio_free(led[i]);
+    }
 
 	printk(KERN_INFO "Device unregistered\n");
 }

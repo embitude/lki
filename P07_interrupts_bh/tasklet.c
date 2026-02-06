@@ -1,17 +1,33 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
+#include <linux/version.h>
 #include <linux/interrupt.h>
 #include <linux/gpio.h>
 
 char my_tasklet_data[] = "my_tasklet_function_was_called";
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,9,0))
 void my_tasklet_function(unsigned long data)
 {
 	printk("%s\n", (char *)data);
 	return;
 }
+#else
+void my_tasklet_function(struct tasklet_struct *t)
+{
+	printk("%s\n", my_tasklet_data);
+	return;
+}
+#endif
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,9,0))
+void my_tasklet_function(unsigned long data);
 DECLARE_TASKLET(my_tasklet, my_tasklet_function, (unsigned long)&my_tasklet_data);
+#else
+void my_tasklet_function(struct tasklet_struct *t);
+DECLARE_TASKLET(my_tasklet, my_tasklet_function);
+#endif
+
 
 int init_module(void)
 {

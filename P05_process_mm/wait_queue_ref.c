@@ -22,7 +22,7 @@ static int thread_fn(void *unused)
 	flag = 0;
 	printk("Woken Up\n");
 	thread_st = NULL;
-    do_exit(0);
+	return 0;
 }
 
 

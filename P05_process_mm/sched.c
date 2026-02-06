@@ -1,6 +1,7 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
+#include <linux/version.h>
 #include <linux/fs.h>
 #include <linux/device.h>
 #include <linux/cdev.h>
@@ -59,10 +60,15 @@ int write_proc(struct file *file,const char *buffer, size_t count, loff_t *off)
 	//TODO 2: Wake up the sleeping process
 	return count;
 }
-
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,6,0))
 struct file_operations p_fops = {
 	.write = write_proc
 };
+#else
+struct proc_ops p_fops = {
+	.proc_write = write_proc
+};
+#endif
 
 struct file_operations pra_fops = {
 	read:        read,
@@ -96,7 +102,11 @@ int schd_init (void)
 		return -1; 
 	}
 
-	if ((cl = class_create(THIS_MODULE, "chardrv")) == NULL)
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6,4,0))
+	if (IS_ERR(cl = class_create(THIS_MODULE, "chardev")))
+#else
+	if (IS_ERR(cl = class_create("chardev")))
+#endif
 	{
 		cdev_del(&c_dev);
 		unregister_chrdev_region(dev, MINOR_CNT);

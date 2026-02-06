@@ -13,6 +13,8 @@
 #include <linux/delay.h>
 #include <linux/random.h>
 #include <linux/slab.h>
+#include <linux/mutex.h>
+#include <linux/semaphore.h>
 
 static struct task_struct *thread_cons[2], *thread_prod;
 static int thread_id[2];
@@ -69,11 +71,10 @@ int producer(void* arg)
 		get_random_bytes(&i, sizeof(i));
 		ssleep(i % 5);
 		if (signal_pending(current))
-			break;
+			return -EINTR;
 	}
 	printk(KERN_INFO "Producer Thread Stopping\n");
-	thread_prod = NULL;
-	do_exit(0);
+	return 0;
 }
 
 static int thread_fn(void *thread_id)
@@ -93,16 +94,15 @@ static int thread_fn(void *thread_id)
 			job_queue = job_queue->next;
 		}
 		if (next_job == NULL)
-			break;
+			return 0;
 		process_job (thread_id, next_job);
 		kfree (next_job);
 		if (signal_pending(current))
-			break;
+			return -EINTR;
 	}
 	id = *(int *)thread_id;
-	thread_cons[id] = NULL;
-	printk(KERN_INFO "Consumer Thread Stopping\n");
-	do_exit(0);
+	printk(KERN_INFO "Consumer Thread %d Stopping\n", id);
+	return 0;
 }
 
 
@@ -127,8 +127,10 @@ static int __init init_consprod(void)
 		thread_id[i] = i;
 		sprintf(buff, "thread_con%d", i);
 		thread_cons[i] = kthread_run(thread_fn, &thread_id[i], buff);
-		if (thread_cons[i])
+		if (thread_cons[i]) {
 			printk(KERN_INFO "Thread %d created\n", i);
+			get_task_struct(thread_cons[i]);
+		}
 		else 
 		{
 			printk(KERN_INFO "Thread creation failed\n");
@@ -136,8 +138,10 @@ static int __init init_consprod(void)
 		}
 	}
 	thread_prod = kthread_run(producer, NULL, "myprod");
-	if (thread_prod)
+	if (thread_prod) {
 		printk(KERN_INFO "Producer Thread created\n");
+		get_task_struct(thread_prod);
+	}
 	else 
 	{
 		printk(KERN_INFO "Producer thread creation failed\n");
@@ -153,17 +157,15 @@ static void __exit cleanup_consprod(void)
 	printk("Cleaning Up\n");
 	for (i = 0; i < 2; i++)
 	{
-		if (thread_cons[i] != NULL)
-		{
-			kthread_stop(thread_cons[i]);
-			printk(KERN_INFO "Thread %d stopped", i);
-		}
+		send_sig(SIGKILL, thread_cons[i], 1);
+		kthread_stop(thread_cons[i]);
+		put_task_struct(thread_cons[i]);
+		printk(KERN_INFO "Thread %d stopped", i);
 	}
-	if (thread_prod != NULL)
-	{
-		kthread_stop(thread_prod);
-		printk(KERN_INFO "Thread prod stopped");
-	}
+	send_sig(SIGKILL, thread_prod, 1);
+	kthread_stop(thread_prod);
+	put_task_struct(thread_prod);
+	printk(KERN_INFO "Thread prod stopped");
 }
 
 module_init(init_consprod);
